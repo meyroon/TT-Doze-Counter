@@ -1,7 +1,7 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # تنظیمات اتصال به دیتابیس SQLite
 def setup_db():
@@ -12,7 +12,7 @@ def setup_db():
     return conn
 
 # ثبت مصرف قرص
-def take(update: Update, context: CallbackContext):
+async def take(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     amount = 1  # مصرف 1 قرص به صورت پیش‌فرض
     current_date = datetime.now().strftime('%Y-%m-%d')
@@ -24,10 +24,10 @@ def take(update: Update, context: CallbackContext):
     conn.commit()
     conn.close()
 
-    update.message.reply_text(f"مصرف {amount} قرص ثبت شد.")
+    await update.message.reply_text(f"مصرف {amount} قرص ثبت شد.")
 
 # گزارش مصرف روزانه
-def report(update: Update, context: CallbackContext):
+async def report(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     date = context.args[0] if context.args else datetime.now().strftime('%Y-%m-%d')
 
@@ -38,12 +38,12 @@ def report(update: Update, context: CallbackContext):
     conn.close()
 
     if result:
-        update.message.reply_text(f"در تاریخ {date} شما {result} قرص مصرف کرده‌اید.")
+        await update.message.reply_text(f"در تاریخ {date} شما {result} قرص مصرف کرده‌اید.")
     else:
-        update.message.reply_text(f"هیچ مصرفی در تاریخ {date} ثبت نشده است.")
+        await update.message.reply_text(f"هیچ مصرفی در تاریخ {date} ثبت نشده است.")
 
 # گزارش مصرف هفتگی
-def week_report(update: Update, context: CallbackContext):
+async def week_report(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     current_date = datetime.now()
     start_of_week = (current_date - timedelta(days=current_date.weekday())).strftime('%Y-%m-%d')
@@ -56,25 +56,23 @@ def week_report(update: Update, context: CallbackContext):
     conn.close()
 
     if result:
-        update.message.reply_text(f"در این هفته، از تاریخ {start_of_week} تا {end_of_week}, شما {result} قرص مصرف کرده‌اید.")
+        await update.message.reply_text(f"در این هفته، از تاریخ {start_of_week} تا {end_of_week}, شما {result} قرص مصرف کرده‌اید.")
     else:
-        update.message.reply_text("هیچ مصرفی برای این هفته ثبت نشده است.")
+        await update.message.reply_text("هیچ مصرفی برای این هفته ثبت نشده است.")
 
 # دستور شروع
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("سلام! من ربات ثبت مصرف قرص هستم. برای ثبت مصرف، دستور /take رو بزنید.")
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text("سلام! من ربات ثبت مصرف قرص هستم. برای ثبت مصرف، دستور /take رو بزنید.")
 
 def main():
-    updater = Updater("7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I", use_context=True)
-    dp = updater.dispatcher
+    application = Application.builder().token("7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I").build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("take", take))
-    dp.add_handler(CommandHandler("report", report))
-    dp.add_handler(CommandHandler("week", week_report))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("take", take))
+    application.add_handler(CommandHandler("report", report))
+    application.add_handler(CommandHandler("week", week_report))
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
