@@ -1,78 +1,98 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, CallbackQueryHandler
 import sqlite3
-from datetime import datetime, timedelta
+import datetime
+import jdatetime
 
-# تنظیمات اتصال به دیتابیس SQLite
-def setup_db():
-    conn = sqlite3.connect("medication_log.db")
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS logs (user_id INTEGER, date TEXT, amount INTEGER)''')
-    conn.commit()
-    return conn
+# ---------- تنظیمات توکن ----------
+TOKEN = "توکن_بات_تو"
 
-# ثبت مصرف قرص
-async def take(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    amount = 1  # مصرف 1 قرص به صورت پیش‌فرض
-    current_date = datetime.now().strftime('%Y-%m-%d')
-    
-    # ذخیره کردن مصرف در دیتابیس
-    conn = setup_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO logs (user_id, date, amount) VALUES (?, ?, ?)", (user_id, current_date, amount))
-    conn.commit()
-    conn.close()
+# ---------- اتصال به دیتابیس ----------
+conn = sqlite3.connect("pill_data.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS pills (
+    user_id INTEGER,
+    date TEXT,
+    amount INTEGER
+)
+""")
+conn.commit()
 
-    await update.message.reply_text(f"مصرف {amount} قرص ثبت شد.")
+# ---------- تبدیل تاریخ میلادی به شمسی ----------
+def to_jalali(date):
+    d = datetime.datetime.strptime(date, "%Y-%m-%d")
+    jd = jdatetime.date.fromgregorian(date=d)
+    return jd.strftime("%Y/%m/%d")
 
-# گزارش مصرف روزانه
-async def report(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    date = context.args[0] if context.args else datetime.now().strftime('%Y-%m-%d')
-
-    conn = setup_db()
-    c = conn.cursor()
-    c.execute("SELECT SUM(amount) FROM logs WHERE user_id = ? AND date = ?", (user_id, date))
-    result = c.fetchone()[0]
-    conn.close()
-
-    if result:
-        await update.message.reply_text(f"در تاریخ {date} شما {result} قرص مصرف کرده‌اید.")
-    else:
-        await update.message.reply_text(f"هیچ مصرفی در تاریخ {date} ثبت نشده است.")
-
-# گزارش مصرف هفتگی
-async def week_report(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    current_date = datetime.now()
-    start_of_week = (current_date - timedelta(days=current_date.weekday())).strftime('%Y-%m-%d')
-    end_of_week = (current_date + timedelta(days=(6 - current_date.weekday()))).strftime('%Y-%m-%d')
-
-    conn = setup_db()
-    c = conn.cursor()
-    c.execute("SELECT SUM(amount) FROM logs WHERE user_id = ? AND date BETWEEN ? AND ?", (user_id, start_of_week, end_of_week))
-    result = c.fetchone()[0]
-    conn.close()
-
-    if result:
-        await update.message.reply_text(f"در این هفته، از تاریخ {start_of_week} تا {end_of_week}, شما {result} قرص مصرف کرده‌اید.")
-    else:
-        await update.message.reply_text("هیچ مصرفی برای این هفته ثبت نشده است.")
-
-# دستور شروع
+# ---------- /start ----------
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("سلام! من ربات ثبت مصرف قرص هستم. برای ثبت مصرف، دستور /take رو بزنید.")
+    keyboard = [
+        [InlineKeyboardButton("➕ افزودن 1 عدد", callback_data="add_1")],
+        [InlineKeyboardButton("📊 گزارش امروز", callback_data="report_today")],
+        [InlineKeyboardButton("📆 گزارش هفتگی", callback_data="report_weekly")]
+    ]
+    await update.message.reply_text(
+        "سلام! هر وقت قرص مصرف کردی، دکمه «افزودن 1 عدد» رو بزن.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-def main():
-    application = Application.builder().token("7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I").build()
+# ---------- افزودن مصرف ----------
+def add_pill(user_id, amount):
+    today = datetime.date.today().isoformat()
+    cursor.execute("SELECT amount FROM pills WHERE user_id=? AND date=?", (user_id, today))
+    row = cursor.fetchone()
+    if row:
+        new_amount = row[0] + amount
+        cursor.execute("UPDATE pills SET amount=? WHERE user_id=? AND date=?", (new_amount, user_id, today))
+    else:
+        cursor.execute("INSERT INTO pills (user_id, date, amount) VALUES (?, ?, ?)", (user_id, today, amount))
+    conn.commit()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("take", take))
-    application.add_handler(CommandHandler("report", report))
-    application.add_handler(CommandHandler("week", week_report))
+# ---------- گزارش امروز ----------
+def get_today_report(user_id):
+    today = datetime.date.today().isoformat()
+    cursor.execute("SELECT amount FROM pills WHERE user_id=? AND date=?", (user_id, today))
+    row = cursor.fetchone()
+    jalali = to_jalali(today)
+    if row:
+        return f"📅 مصرف امروز ({jalali}): {row[0]} عدد"
+    else:
+        return f"📅 در تاریخ امروز ({jalali}) چیزی ثبت نشده."
 
-    application.run_polling()
+# ---------- گزارش هفتگی ----------
+def get_weekly_report(user_id):
+    today = datetime.date.today()
+    week_ago = today - datetime.timedelta(days=6)
+    cursor.execute("SELECT date, amount FROM pills WHERE user_id=? AND date BETWEEN ? AND ?", (user_id, week_ago.isoformat(), today.isoformat()))
+    rows = cursor.fetchall()
+    report = "📆 گزارش هفتگی:\n\n"
+    if rows:
+        for date, amount in rows:
+            report += f"{to_jalali(date)}: {amount} عدد\n"
+    else:
+        report += "هیچ چیزی ثبت نشده."
+    return report
 
+# ---------- هندل دکمه‌ها ----------
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if query.data == "add_1":
+        add_pill(user_id, 1)
+        await query.edit_message_text("✅ یک عدد مصرف ثبت شد.")
+    elif query.data == "report_today":
+        report = get_today_report(user_id)
+        await query.edit_message_text(report)
+    elif query.data == "report_weekly":
+        report = get_weekly_report(user_id)
+        await query.edit_message_text(report)
+
+# ---------- اجرای برنامه ----------
 if __name__ == '__main__':
-    main()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.run_polling()
