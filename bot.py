@@ -1,98 +1,107 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, CallbackQueryHandler
-import sqlite3
+import os
+import json
 import datetime
 import jdatetime
-
-# ---------- تنظیمات توکن ----------
-TOKEN = "توکن_بات_تو"
-
-# ---------- اتصال به دیتابیس ----------
-conn = sqlite3.connect("pill_data.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS pills (
-    user_id INTEGER,
-    date TEXT,
-    amount INTEGER
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
 )
-""")
-conn.commit()
 
-# ---------- تبدیل تاریخ میلادی به شمسی ----------
-def to_jalali(date):
-    d = datetime.datetime.strptime(date, "%Y-%m-%d")
-    jd = jdatetime.date.fromgregorian(date=d)
-    return jd.strftime("%Y/%m/%d")
+DATA_FILE = 'data.json'
 
-# ---------- /start ----------
-async def start(update: Update, context: CallbackContext):
-    keyboard = [
-        [InlineKeyboardButton("➕ افزودن 1 عدد", callback_data="add_1")],
-        [InlineKeyboardButton("📊 گزارش امروز", callback_data="report_today")],
-        [InlineKeyboardButton("📆 گزارش هفتگی", callback_data="report_weekly")]
-    ]
-    await update.message.reply_text(
-        "سلام! هر وقت قرص مصرف کردی، دکمه «افزودن 1 عدد» رو بزن.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# بارگذاری داده‌ها از فایل
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, 'r') as f:
+        return json.load(f)
 
-# ---------- افزودن مصرف ----------
-def add_pill(user_id, amount):
-    today = datetime.date.today().isoformat()
-    cursor.execute("SELECT amount FROM pills WHERE user_id=? AND date=?", (user_id, today))
-    row = cursor.fetchone()
-    if row:
-        new_amount = row[0] + amount
-        cursor.execute("UPDATE pills SET amount=? WHERE user_id=? AND date=?", (new_amount, user_id, today))
+# ذخیره داده‌ها در فایل
+def save_data(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# گرفتن تاریخ شمسی به فرمت YYYY-MM-DD
+def get_today_date():
+    return jdatetime.date.today().isoformat()
+
+# فرمان شروع
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report - گزارش امروز\n/weekly - گزارش هفتگی")
+
+# ذخیره عدد ارسال شده
+async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    text = update.message.text.strip()
+
+    if not text.isdigit():
+        await update.message.reply_text("لطفاً فقط عدد وارد کنید.")
+        return
+
+    number = int(text)
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {}
+    if today not in data[user_id]:
+        data[user_id][today] = []
+
+    data[user_id][today].append(number)
+    save_data(data)
+    await update.message.reply_text(f"عدد {number} ذخیره شد.")
+
+# گزارش امروز
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+    numbers = data.get(user_id, {}).get(today, [])
+
+    if numbers:
+        total = sum(numbers)
+        await update.message.reply_text(f"مقادیر امروز ({today}): {numbers}\nمجموع: {total}")
     else:
-        cursor.execute("INSERT INTO pills (user_id, date, amount) VALUES (?, ?, ?)", (user_id, today, amount))
-    conn.commit()
+        await update.message.reply_text("هنوز عددی برای امروز ثبت نکردی.")
 
-# ---------- گزارش امروز ----------
-def get_today_report(user_id):
-    today = datetime.date.today().isoformat()
-    cursor.execute("SELECT amount FROM pills WHERE user_id=? AND date=?", (user_id, today))
-    row = cursor.fetchone()
-    jalali = to_jalali(today)
-    if row:
-        return f"📅 مصرف امروز ({jalali}): {row[0]} عدد"
+# گزارش هفتگی
+async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    today = jdatetime.date.today()
+    message_lines = []
+    total_all = 0
+
+    for i in range(7):
+        day = (today - jdatetime.timedelta(days=i)).isoformat()
+        nums = data.get(user_id, {}).get(day, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day}: {nums} → مجموع: {day_total}")
+
+    if message_lines:
+        message = "\n".join(reversed(message_lines)) + f"\n\nمجموع کل هفته: {total_all}"
     else:
-        return f"📅 در تاریخ امروز ({jalali}) چیزی ثبت نشده."
+        message = "هیچ عددی در هفت روز گذشته ثبت نشده."
 
-# ---------- گزارش هفتگی ----------
-def get_weekly_report(user_id):
-    today = datetime.date.today()
-    week_ago = today - datetime.timedelta(days=6)
-    cursor.execute("SELECT date, amount FROM pills WHERE user_id=? AND date BETWEEN ? AND ?", (user_id, week_ago.isoformat(), today.isoformat()))
-    rows = cursor.fetchall()
-    report = "📆 گزارش هفتگی:\n\n"
-    if rows:
-        for date, amount in rows:
-            report += f"{to_jalali(date)}: {amount} عدد\n"
-    else:
-        report += "هیچ چیزی ثبت نشده."
-    return report
+    await update.message.reply_text(message)
 
-# ---------- هندل دکمه‌ها ----------
-async def button_handler(update: Update, context: CallbackContext):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
+# اجرای برنامه
+if __name__ == "__main__":
+    import dotenv
+    dotenv.load_dotenv()  # اگر فایل .env داری
 
-    if query.data == "add_1":
-        add_pill(user_id, 1)
-        await query.edit_message_text("✅ یک عدد مصرف ثبت شد.")
-    elif query.data == "report_today":
-        report = get_today_report(user_id)
-        await query.edit_message_text(report)
-    elif query.data == "report_weekly":
-        report = get_weekly_report(user_id)
-        await query.edit_message_text(report)
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        raise ValueError("توکن تلگرام یافت نشد. لطفاً متغیر BOT_TOKEN را تنظیم کن.")
 
-# ---------- اجرای برنامه ----------
-if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("report", report))
+    app.add_handler(CommandHandler("weekly", weekly))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
+
+    print("ربات در حال اجراست...")
     app.run_polling()
