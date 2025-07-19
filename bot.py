@@ -52,16 +52,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "/start - شروع\n"
-        "/report-day - گزارش مصرف امروز\n"
-        "/report-week - گزارش مصرف این هفته\n"
-        "/report-month - گزارش مصرف این ماه\n"
-        "/reset-day - ریست اطلاعات امروز\n"
-        "/reset-week - ریست اطلاعات این هفته\n"
-        "/reset-month - ریست اطلاعات این ماه\n"
+        "/report_day - گزارش مصرف امروز\n"
+        "/report_week - گزارش مصرف این هفته\n"
+        "/report_month - گزارش مصرف این ماه\n"
+        "/reset_day - ریست اطلاعات امروز\n"
+        "/reset_week - ریست اطلاعات این هفته\n"
+        "/reset_month - ریست اطلاعات این ماه\n"
         "/help - راهنمای دستورات"
     )
 
-# دستور /reset-day
+# دستور /reset_day
 async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -73,7 +73,7 @@ async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ مصرفی برای امروز ثبت نشده بود.")
 
-# دستور /reset-week
+# دستور /reset_week
 async def reset_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -90,7 +90,7 @@ async def reset_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ داده‌ای برای پاک کردن نبود.")
 
-# دستور /reset-month
+# دستور /reset_month
 async def reset_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -105,7 +105,7 @@ async def reset_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ داده‌ای برای پاک کردن نبود.")
 
-# دستور /report-day
+# دستور /report_day
 async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -117,7 +117,7 @@ async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"📊 گزارش مصرف امروز ({today}):\n🔢 مجموع مصرف: {total} عدد")
 
-# دستور /report-week
+# دستور /report_week
 async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -139,7 +139,7 @@ async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ هیچ مصرفی در این هفته ثبت نشده است.")
 
-# دستور /report-month
+# دستور /report_month
 async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -174,12 +174,12 @@ if __name__ == "__main__":
     # دستورات
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("reset-day", reset_day))
-    app.add_handler(CommandHandler("reset-week", reset_week))
-    app.add_handler(CommandHandler("reset-month", reset_month))
-    app.add_handler(CommandHandler("report-day", report_day))
-    app.add_handler(CommandHandler("report-week", report_week))
-    app.add_handler(CommandHandler("report-month", report_month))
+    app.add_handler(CommandHandler("reset_day", reset_day))
+    app.add_handler(CommandHandler("reset_week", reset_week))
+    app.add_handler(CommandHandler("reset_month", reset_month))
+    app.add_handler(CommandHandler("report_day", report_day))
+    app.add_handler(CommandHandler("report_week", report_week))
+    app.add_handler(CommandHandler("report_month", report_month))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     app.run_webhook(
