@@ -1,167 +1,160 @@
 import os
 import json
 import datetime
-from persiantools.jdatetime import JalaliDate
+import jdatetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes,
-    MessageHandler, filters
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
 )
 
-DATA_FILE = "data.json"
+DATA_FILE = 'data.json'
 
 # بارگذاری داده‌ها از فایل
-try:
-    with open(DATA_FILE, "r") as f:
-        data = json.load(f)
-except FileNotFoundError:
-    data = {}
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, 'r') as f:
+        return json.load(f)
 
-def save_data():
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+# ذخیره داده‌ها در فایل
+def save_data(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [
-            InlineKeyboardButton("افزودن مقدار", callback_data="add"),
-            InlineKeyboardButton("گزارش امروز", callback_data="report_day"),
-        ],
-        [
-            InlineKeyboardButton("گزارش هفتگی", callback_data="report_week"),
-            InlineKeyboardButton("گزارش ماهانه", callback_data="report_month"),
-        ],
+# گرفتن تاریخ شمسی به فرمت YYYY-MM-DD
+def get_today_date():
+    return jdatetime.date.today().isoformat()
+
+# ساخت دکمه‌ها برای نمایش مجدد گزینه‌ها
+def get_keyboard():
+    return [
+        [InlineKeyboardButton("گزارش روزانه", callback_data="report_day")],
+        [InlineKeyboardButton("گزارش هفتگی", callback_data="report_week")],
+        [InlineKeyboardButton("گزارش ماهانه", callback_data="report_month")],
+        [InlineKeyboardButton("ریست روزانه", callback_data="reset_day")],
     ]
+
+# ارسال مجدد دکمه‌ها بعد از هر پاسخ
+async def show_options(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = get_keyboard()
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("به بات ثبت مصرف دارو خوش آمدید! 👋", reply_markup=reply_markup)
+    await update.message.reply_text("لطفاً یکی از گزینه‌ها را انتخاب کنید:", reply_markup=reply_markup)
 
-# ثبت مقدار
-async def add_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("لطفاً مقدار مصرف قرص را وارد کنید (مثلاً 1.5 یا 2):")
-    context.user_data["awaiting_value"] = True
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("awaiting_value"):
-        try:
-            value = float(update.message.text)  # تغییر از int به float برای پذیرش اعداد اعشاری
-            user_id = str(update.effective_user.id)
-            today = str(datetime.date.today())
-            user_data = data.setdefault(user_id, [])
-            user_data.append({"date": today, "value": value})
-            save_data()
-            # ارسال گزارش بعد از ثبت عدد
-            await update.message.reply_text(f"✅ {value} قرص ثبت شد.")
-        except ValueError:
-            await update.message.reply_text("لطفاً فقط یک عدد وارد کنید.")
-        context.user_data["awaiting_value"] = False
+# دستور /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! لطفاً یکی از گزینه‌ها را انتخاب کنید:")
+    await show_options(update, context)
 
 # گزارش روزانه
 async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = datetime.date.today()
-    today_jalali = JalaliDate(today)
-    user_data = data.get(user_id, [])
-    total = sum(entry["value"] for entry in user_data if entry["date"] == str(today))
-
-    message = (
-        f"📅 گزارش روزانه\n"
-        f"تاریخ: {today_jalali}\n\n"
-        f"📊 مجموع مصرف امروز: {total} قرص"
-    )
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(message)
-    else:
-        await update.message.reply_text(message)
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+    numbers = data.get(user_id, {}).get(today, [])
+    total = sum(numbers) if numbers else 0
+    await update.message.reply_text(f"گزارش امروز ({today}): {numbers}\nمجموع: {total}")
+    await show_options(update, context)
 
 # گزارش هفتگی
-def get_start_of_week():
-    today = datetime.date.today()
-    start = today - datetime.timedelta(days=today.weekday())
-    return start
-
 async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = datetime.date.today()
-    start_of_week = get_start_of_week()  # اطمینان از این که start_of_week یک شیء datetime.date است.
-    today_jalali = JalaliDate(today)
-    start_jalali = JalaliDate(start_of_week)
-    user_data = data.get(user_id, [])
-    total = 0
-    for entry in user_data:
-        entry_date = datetime.datetime.strptime(entry["date"], "%Y-%m-%d").date()
-        if start_of_week <= entry_date <= today:
-            total += entry["value"]
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+    message_lines = []
+    total_all = 0
 
-    message = (
-        f"📅 گزارش هفتگی\n"
-        f"از تاریخ: {start_jalali}\n"
-        f"تا تاریخ: {today_jalali}\n\n"
-        f"📊 مجموع مصرف ثبت‌شده در این هفته: {total} قرص"
-    )
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(message)
-    else:
-        await update.message.reply_text(message)
+    # تاریخ شروع هفته و پایان هفته
+    start_of_week = get_start_of_week()
+
+    for i in range(7):
+        day = (start_of_week - jdatetime.timedelta(days=i)).isoformat()
+        nums = data.get(user_id, {}).get(day, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day}: {nums} → مجموع: {day_total}")
+
+    message = "\n".join(reversed(message_lines)) + f"\n\nمجموع کل هفته: {total_all}"
+    await update.message.reply_text(f"گزارش هفته از {start_of_week}:\n{message}")
+    await show_options(update, context)
 
 # گزارش ماهانه
 async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = JalaliDate.today()
-    start_of_month = JalaliDate(today.year, today.month, 1)
-    user_data = data.get(user_id, [])
-    total = 0
-    for entry in user_data:
-        entry_date = datetime.datetime.strptime(entry["date"], "%Y-%m-%d").date()
-        entry_jalali = JalaliDate(entry_date)
-        if start_of_month <= entry_jalali <= today:
-            total += entry["value"]
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    today = jdatetime.date.today()
+    start_of_month = today.replace(day=1).isoformat()
 
-    message = (
-        f"📅 گزارش ماهانه\n"
-        f"از تاریخ: {start_of_month}\n"
-        f"تا تاریخ: {today}\n\n"
-        f"📊 مجموع مصرف ثبت‌شده در این ماه: {total} قرص"
-    )
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(message)
+    # محاسبه تعداد مصرف تا پایان ماه
+    message_lines = []
+    total_all = 0
+
+    for day in range(1, (today.day + 1)):
+        day_str = (today.replace(day=day)).isoformat()
+        nums = data.get(user_id, {}).get(day_str, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day_str}: {nums} → مجموع: {day_total}")
+
+    message = f"گزارش مصرف ماهانه از {start_of_month} تا {today}: \n" + "\n".join(message_lines) + f"\n\nمجموع کل ماه: {total_all}"
+    await update.message.reply_text(message)
+    await show_options(update, context)
+
+# ریست روزانه
+async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+
+    if user_id in data and today in data[user_id]:
+        del data[user_id][today]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های امروز ریست شد.")
     else:
-        await update.message.reply_text(message)
+        await update.message.reply_text("هیچ داده‌ای برای امروز ثبت نشده است.")
+    await show_options(update, context)
 
-# مدیریت دکمه‌ها
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.data == "add":
-        await add_entry(update, context)
-    elif query.data == "report_day":
-        await report_day(update, context)
-    elif query.data == "report_week":
-        await report_week(update, context)
-    elif query.data == "report_month":
-        await report_month(update, context)
+# مدیریت پیام‌ها
+async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    text = update.message.text.strip()
 
-# اجرای بات
+    try:
+        number = float(text)  # برای پذیرش اعداد اعشاری
+    except ValueError:
+        await update.message.reply_text("لطفاً فقط عدد وارد کنید.")
+        return
+
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {}
+    if today not in data[user_id]:
+        data[user_id][today] = []
+
+    data[user_id][today].append(number)
+    save_data(data)
+    await update.message.reply_text(f"عدد {number} ذخیره شد.")
+    await show_options(update, context)
+
+# برای شروع هر هفته از روز شنبه
+def get_start_of_week():
+    today = jdatetime.date.today()
+    return today - jdatetime.timedelta(days=today.weekday() + 1)
+
+# اجرا
 if __name__ == "__main__":
-    import os
-
     TOKEN = "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
-    WEBHOOK_URL = "https://tt-doze-counter.onrender.com"
-
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("report-day", report_day))
+    app.add_handler(CommandHandler("report-week", report_week))
+    app.add_handler(CommandHandler("report-month", report_month))
+    app.add_handler(CommandHandler("reset-day", reset_day))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
-    print("Bot is running...")
-
-    app.run_webhook(
-        listen="0.0.0.0",  # Listen on all IPs
-        port=int(os.environ.get("PORT", 8080)),  # Use port 8080 or environment variable
-        url_path=TOKEN,  # Use the token as the webhook path
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",  # Webhook URL with token
-    )
+    print("ربات در حال اجراست...")
+    app.run_polling()
