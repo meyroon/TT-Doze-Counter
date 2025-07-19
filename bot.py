@@ -1,142 +1,94 @@
-import os
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+import logging
 from telegram import Update
-from datetime import datetime
-import json
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+from datetime import datetime, timedelta
+import os
 
-# توکن ربات
-TOKEN = "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
+# راه‌اندازی لاگ
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# آدرس وبهوک
+# دیتابیس ساده در حافظه
+user_data = {}
+
+# توکن و آدرس Webhook
+TOKEN = os.environ.get("TOKEN") or "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
 WEBHOOK_URL = "https://tt-doze-counter.onrender.com"
 
-# فایل ذخیره‌سازی
-DATA_FILE = "data.json"
-
-
-# تابع بارگذاری دیتا
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-# تابع ذخیره دیتا
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-# دستور استارت
+# کمک و شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("به ربات شمارش دوز خوش آمدید! لطفاً عدد دوز مصرفی را ارسال کنید.")
+    await update.message.reply_text("سلام! برای ثبت مصرف قرص از دستور /add استفاده کن.\nبرای مثال: `/add 2`\nهمچنین:\n/today → گزارش امروز\n/week → گزارش هفتگی\n/help → راهنما", parse_mode="Markdown")
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("دستورات:\n/add X → ثبت عدد X\n/today → مجموع امروز\n/week → مجموع ۷ روز اخیر")
 
-# ثبت دوز
-async def handle_dose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    text = update.message.text.strip().replace(",", ".")
-
-    try:
-        dose = float(text)
-    except ValueError:
-        await update.message.reply_text("لطفاً فقط عدد اعشاری یا صحیح ارسال کنید.")
-        return
-
+# ثبت مقدار مصرف
+async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%H:%M:%S")
 
-    data = load_data()
-    data.setdefault(user_id, {}).setdefault(date_str, []).append({
-        "value": dose,
-        "time": timestamp
-    })
+    if user_id not in user_data:
+        user_data[user_id] = {}
 
-    save_data(data)
-    await update.message.reply_text(f"✅ دوز {dose} ثبت شد. ساعت {timestamp}")
+    if date_str not in user_data[user_id]:
+        user_data[user_id][date_str] = []
 
-    # نمایش مجدد گزینه‌ها
-    await send_menu(update)
+    try:
+        value = float(context.args[0])
+        user_data[user_id][date_str].append((now.isoformat(), value))
+        await update.message.reply_text(f"✅ مقدار {value} ثبت شد.")
+    except (IndexError, ValueError):
+        await update.message.reply_text("فرمت درست نیست. مثال: `/add 1.5`", parse_mode="Markdown")
 
-
-# گزارش روزانه
-async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
+# گزارش امروز
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     date_str = datetime.now().strftime("%Y-%m-%d")
 
-    data = load_data()
-    doses = data.get(user_id, {}).get(date_str, [])
+    total = sum(value for _, value in user_data.get(user_id, {}).get(date_str, []))
+    await update.message.reply_text(f"📅 مجموع امروز: {total}")
 
-    if not doses:
-        await update.message.reply_text("برای امروز هنوز چیزی ثبت نشده.")
-        return
-
-    total = sum(d["value"] for d in doses)
-    details = "\n".join([f"{d['time']}: {d['value']}" for d in doses])
-
-    await update.message.reply_text(f"📅 گزارش امروز:\nمجموع: {total}\n{details}")
-    await send_menu(update)
-
-
-# گزارش هفتگی
-async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    user_data = data.get(user_id, {})
-
-    if not user_data:
-        await update.message.reply_text("اطلاعاتی برای هفته جاری وجود ندارد.")
-        return
-
-    lines = []
+# گزارش هفته
+async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     total = 0
-    for day, entries in sorted(user_data.items()):
-        subtotal = sum(e["value"] for e in entries)
-        lines.append(f"{day}: {subtotal}")
-        total += subtotal
+    today = datetime.now()
 
-    report = "\n".join(lines) + f"\n\n📊 مجموع کل: {total}"
-    await update.message.reply_text(f"📆 گزارش هفتگی:\n{report}")
-    await send_menu(update)
+    for i in range(7):
+        day = today - timedelta(days=i)
+        date_str = day.strftime("%Y-%m-%d")
+        daily_entries = user_data.get(user_id, {}).get(date_str, [])
+        total += sum(value for _, value in daily_entries)
 
+    await update.message.reply_text(f"🗓 مجموع ۷ روز اخیر: {total}")
 
-# ریست روزانه
-async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    date_str = datetime.now().strftime("%Y-%m-%d")
+# در صورت ارسال پیام غیرمرتبط
+async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("دستور ناشناخته است. برای راهنما: /help")
 
-    data = load_data()
-    if user_id in data and date_str in data[user_id]:
-        del data[user_id][date_str]
-        save_data(data)
-        await update.message.reply_text("🔁 اطلاعات امروز حذف شد.")
-    else:
-        await update.message.reply_text("اطلاعاتی برای امروز وجود نداشت.")
-    await send_menu(update)
+# پیکربندی و اجرای ربات
+def main():
+    application = Application.builder().token(TOKEN).build()
 
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("add", add))
+    application.add_handler(CommandHandler("today", today))
+    application.add_handler(CommandHandler("week", week))
+    application.add_handler(MessageHandler(filters.COMMAND, unknown))
 
-# منو اصلی
-async def send_menu(update: Update):
-    await update.message.reply_text("👇 گزینه‌ها:\n"
-                                    "/day_report - گزارش امروز\n"
-                                    "/week_report - گزارش هفتگی\n"
-                                    "/reset_day - حذف اطلاعات امروز")
-
-
-if __name__ == "__main__":
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("day_report", report_day))
-    app.add_handler(CommandHandler("week_report", report_week))
-    app.add_handler(CommandHandler("reset_day", reset_day))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_dose))
-
-    print("🎯 Setting webhook...")
-    app.run_webhook(
+    application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=WEBHOOK_URL + f"/{TOKEN}"
+        webhook_url=f"{WEBHOOK_URL}/",
     )
+
+if __name__ == "__main__":
+    main()
