@@ -1,7 +1,7 @@
 Flask
 persiantools
 python-telegram-bot[webhooks]
-python-telegram-bot==20.3
+python-telegram-bot==20.8
 jdatetime
 python-dotenv
 
