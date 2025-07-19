@@ -1,94 +1,138 @@
-import logging
+import os
+import json
+from datetime import datetime, timedelta
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    ContextTypes,
     MessageHandler,
+    ContextTypes,
     filters,
 )
-from datetime import datetime, timedelta
-import os
 
-# راه‌اندازی لاگ
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# دیتابیس ساده در حافظه
-user_data = {}
-
-# توکن و آدرس Webhook
-TOKEN = os.environ.get("TOKEN") or "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
+TOKEN = os.getenv("BOT_TOKEN", "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I")
 WEBHOOK_URL = "https://tt-doze-counter.onrender.com"
 
-# کمک و شروع
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! برای ثبت مصرف قرص از دستور /add استفاده کن.\nبرای مثال: `/add 2`\nهمچنین:\n/today → گزارش امروز\n/week → گزارش هفتگی\n/help → راهنما", parse_mode="Markdown")
+DATA_DIR = "user_data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("دستورات:\n/add X → ثبت عدد X\n/today → مجموع امروز\n/week → مجموع ۷ روز اخیر")
+def get_user_file(user_id):
+    return os.path.join(DATA_DIR, f"{user_id}.json")
 
-# ثبت مقدار مصرف
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    now = datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
+def load_user_data(user_id):
+    file_path = get_user_file(user_id)
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    else:
+        return {}
 
-    if user_id not in user_data:
-        user_data[user_id] = {}
+def save_user_data(user_id, data):
+    with open(get_user_file(user_id), "w") as f:
+        json.dump(data, f)
 
-    if date_str not in user_data[user_id]:
-        user_data[user_id][date_str] = []
+def add_dose(user_id, amount):
+    data = load_user_data(user_id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%H:%M")
+    data.setdefault(today, []).append({"time": now, "amount": amount})
+    save_user_data(user_id, data)
 
-    try:
-        value = float(context.args[0])
-        user_data[user_id][date_str].append((now.isoformat(), value))
-        await update.message.reply_text(f"✅ مقدار {value} ثبت شد.")
-    except (IndexError, ValueError):
-        await update.message.reply_text("فرمت درست نیست. مثال: `/add 1.5`", parse_mode="Markdown")
+def get_daily_report(user_id, date_str=None):
+    data = load_user_data(user_id)
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    entries = data.get(date_str, [])
+    total = sum(entry["amount"] for entry in entries)
+    details = "\n".join([f"⏰ {entry['time']} ➤ {entry['amount']}" for entry in entries]) or "هیچ موردی ثبت نشده"
+    return f"📅 گزارش روز {date_str}:\n{details}\n\n🔢 مجموع: {total}"
 
-# گزارش امروز
-async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    date_str = datetime.now().strftime("%Y-%m-%d")
-
-    total = sum(value for _, value in user_data.get(user_id, {}).get(date_str, []))
-    await update.message.reply_text(f"📅 مجموع امروز: {total}")
-
-# گزارش هفته
-async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    total = 0
+def get_start_of_week():
     today = datetime.now()
+    start = today - timedelta(days=(today.weekday() + 1) % 7)  # Saturday
+    return start.date()
+
+def get_weekly_report(user_id):
+    data = load_user_data(user_id)
+    start = get_start_of_week()
+    end = start + timedelta(days=6)
+    total_week = 0
+    daily_reports = []
 
     for i in range(7):
-        day = today - timedelta(days=i)
-        date_str = day.strftime("%Y-%m-%d")
-        daily_entries = user_data.get(user_id, {}).get(date_str, [])
-        total += sum(value for _, value in daily_entries)
+        day = (start + timedelta(days=i)).strftime("%Y-%m-%d")
+        entries = data.get(day, [])
+        total = sum(entry["amount"] for entry in entries)
+        if entries:
+            details = "\n".join([f"{entry['time']} ➤ {entry['amount']}" for entry in entries])
+            report = f"📆 {day}:\n{details}\n🧮 مجموع: {total}"
+        else:
+            report = f"📆 {day}: هیچ موردی ثبت نشده"
+        daily_reports.append(report)
+        total_week += total
 
-    await update.message.reply_text(f"🗓 مجموع ۷ روز اخیر: {total}")
+    summary = "\n\n".join(daily_reports)
+    return f"📊 گزارش هفتگی ({start} تا {end}):\n\n{summary}\n\n🔁 مجموع کل هفته: {total_week}"
 
-# در صورت ارسال پیام غیرمرتبط
-async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("دستور ناشناخته است. برای راهنما: /help")
+# دستورات ربات
 
-# پیکربندی و اجرای ربات
-def main():
-    application = Application.builder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("add", add))
-    application.add_handler(CommandHandler("today", today))
-    application.add_handler(CommandHandler("week", week))
-    application.add_handler(MessageHandler(filters.COMMAND, unknown))
-
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=f"{WEBHOOK_URL}/",
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "سلام! مقدار مصرفت رو با فرستادن عدد وارد کن.\n"
+        "با /daily گزارش امروز رو بگیر.\n"
+        "با /weekly گزارش هفتگی رو ببین."
     )
 
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text.isdigit():
+        user_id = str(update.message.from_user.id)
+        amount = int(text)
+        add_dose(user_id, amount)
+        await update.message.reply_text(f"✔️ {amount} ثبت شد.")
+    else:
+        await update.message.reply_text("لطفاً فقط عدد بفرست.")
+
+async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    report = get_daily_report(user_id)
+    await update.message.reply_text(report)
+
+async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    report = get_weekly_report(user_id)
+    await update.message.reply_text(report)
+
+# تنظیمات اپلیکیشن
+
+app = Application.builder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("daily", daily))
+app.add_handler(CommandHandler("weekly", weekly))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# راه‌اندازی webhook با Flask
+
+flask_app = Flask(__name__)
+
+@flask_app.route("/", methods=["GET"])
+def index():
+    return "Bot is running!"
+
+@flask_app.route("/", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app.bot)
+    app.update_queue.put_nowait(update)
+    return "ok"
+
+async def set_webhook():
+    await app.bot.set_webhook(url=WEBHOOK_URL)
+
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(set_webhook())
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=WEBHOOK_URL
+    )
