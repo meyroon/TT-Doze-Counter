@@ -1,12 +1,10 @@
 services:
   - type: web
-    name: my-telegram-bot
+    name: tt-doze-counter
     env: python
-    buildCommand: ""
+    plan: free
+    buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
-      - key: BOT_TOKEN
+      - key: TOKEN
         value: 7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I
-      - key: WEBHOOK_URL
-        value: https://tt-doze-counter.onrender.com/webhook
-    plan: free
