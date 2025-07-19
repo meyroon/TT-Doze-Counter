@@ -50,6 +50,10 @@ def get_end_of_month():
     end_of_month = (today.replace(day=1) + jdatetime.timedelta(days=32)).replace(day=1) - jdatetime.timedelta(days=1)
     return end_of_month.isoformat()
 
+# دستور /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! برای ثبت مصرف روزانه‌تان، عدد مورد نظر را ارسال کنید.")
+
 # گزارش روزانه
 async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
