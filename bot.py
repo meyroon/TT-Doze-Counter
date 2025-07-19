@@ -26,13 +26,6 @@ def save_data(data):
 def get_today_date():
     return jdatetime.date.today().isoformat()
 
-# گرفتن تاریخ اولین روز هفته (شنبه)
-def get_start_of_week():
-    today = jdatetime.date.today()
-    days_to_saturday = (today.weekday() + 1) % 7  # شنبه به‌عنوان اولین روز هفته
-    start_of_week = today - jdatetime.timedelta(days=days_to_saturday)
-    return start_of_week.isoformat()
-
 # دستور /help
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -163,7 +156,7 @@ async def reset_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("هیچ داده‌ای برای هفته جاری ثبت نشده است.")
 
-# اجرای برنامه
+# اجرای برنامه با Webhook
 if __name__ == "__main__":
     import dotenv
     dotenv.load_dotenv()  # اگر فایل .env داری
@@ -184,4 +177,9 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     print("ربات در حال اجراست...")
-    app.run_polling()
+    app.run_webhook(
+        listen="0.0.0.0",  # اجازه می‌دهد تا درخواست‌ها از همه IP‌ها بیاید
+        port=443,  # پورت 443 برای HTTPS
+        url_path=TOKEN,  # توکن ربات به‌عنوان مسیر
+        webhook_url=f"https://tt-doze-counter.onrender.com/{TOKEN}",  # URL اختصاصی Render شما
+    )
