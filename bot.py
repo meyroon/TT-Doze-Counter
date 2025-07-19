@@ -1,3 +1,4 @@
+import os  # اضافه کردن این خط برای وارد کردن کتابخانه os
 import datetime
 from persiantools.jdatetime import JalaliDate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
