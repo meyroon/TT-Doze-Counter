@@ -6,7 +6,7 @@ services:
     startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
-        value: <توکن_ربات_تو>
+        value: <7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I>
       - key: WEBHOOK_URL
         value: https://tt-doze-counter.onrender.com/webhook
     plan: free
