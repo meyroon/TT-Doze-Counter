@@ -1,10 +1,9 @@
 services:
   - type: web
-    name: tt-doze-counter
-    env: python
-    plan: free
+    name: your-bot-name
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
-      - key: TOKEN
-        value: 7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I
+      - key: PYTHON_VERSION
+        value: 3.11
