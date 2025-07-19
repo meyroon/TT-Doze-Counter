@@ -8,5 +8,5 @@ services:
       - key: BOT_TOKEN
         value: <توکن_ربات_تو>
       - key: WEBHOOK_URL
-        value: https://<نام_اپلیکیشن_شما>.onrender.com/webhook
+        value: https://tt-doze-counter.onrender.com/webhook
     plan: free
