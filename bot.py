@@ -1,14 +1,9 @@
-import json
 import datetime
 from persiantools.jdatetime import JalaliDate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes,
+    MessageHandler, filters
 )
 
 DATA_FILE = "data.json"
@@ -82,13 +77,13 @@ async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # گزارش هفتگی
 def get_start_of_week():
     today = datetime.date.today()
-    start = today - datetime.timedelta(days=today.weekday() + 2 if today.weekday() != 5 else 6)
+    start = today - datetime.timedelta(days=today.weekday())
     return start
 
 async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = datetime.date.today()
-    start_of_week = get_start_of_week()
+    start_of_week = get_start_of_week()  # اطمینان از این که start_of_week یک شیء datetime.date است.
     today_jalali = JalaliDate(today)
     start_jalali = JalaliDate(start_of_week)
     user_data = data.get(user_id, [])
@@ -149,7 +144,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # اجرای بات
 if __name__ == "__main__":
-    import asyncio
+    import os
 
     TOKEN = "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
     WEBHOOK_URL = "https://tt-doze-counter.onrender.com"
