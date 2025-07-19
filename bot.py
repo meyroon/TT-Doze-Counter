@@ -1,169 +1,61 @@
 import os
 import json
 import datetime
+import jdatetime
 from decimal import Decimal
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
-import jdatetime
 
-# فایل داده‌ها
-DATA_FILE = "data.json"
+DATA_FILE = 'data.json'
 
 # بارگذاری داده‌ها از فایل
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r") as f:
+    with open(DATA_FILE, 'r') as f:
         return json.load(f)
 
 # ذخیره داده‌ها در فایل
 def save_data(data):
-    with open(DATA_FILE, "w") as f:
+    with open(DATA_FILE, 'w') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# دریافت تاریخ امروز به شمسی
-def get_today():
+# گرفتن تاریخ شمسی به فرمت YYYY-MM-DD
+def get_today_date():
     return jdatetime.date.today().isoformat()
 
-# دریافت شروع هفته (شنبه)
-def get_week_start():
-    today = datetime.date.today()
-    start = today - datetime.timedelta(days=(today.weekday() + 1) % 7)  # شنبه به عنوان اول هفته
-    return start.isoformat()
-
-# دریافت محدوده ماه (اول ماه و آخر ماه)
-def get_month_range():
+# گرفتن تاریخ شروع هفته (شنبه)
+def get_start_of_week():
     today = jdatetime.date.today()
-    first = today.replace(day=1)
-    if today.month == 12:
-        last = today.replace(year=today.year + 1, month=1, day=1) - datetime.timedelta(days=1)
-    else:
-        last = today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)
-    return first.isoformat(), last.isoformat()
-
-# دستور /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! عدد مصرف را وارد کنید یا از دستورات استفاده کنید. برای راهنما، دستور /help را بزنید.")
+    start_of_week = today - jdatetime.timedelta(days=today.weekday() + 1)  # شنبه
+    return start_of_week.isoformat()
 
 # دستور /help
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "دستورات ربات:\n\n"
         "/start - شروع\n"
-        "/report_day - گزارش مصرف امروز\n"
-        "/report_week - گزارش مصرف این هفته\n"
-        "/report_month - گزارش مصرف این ماه\n"
-        "/reset_day - ریست اطلاعات امروز\n"
-        "/reset_week - ریست اطلاعات این هفته\n"
-        "/reset_month - ریست اطلاعات این ماه\n"
-        "/help - راهنمای دستورات"
+        "/report-day - گزارش روزانه\n"
+        "/report-week - گزارش هفتگی\n"
+        "/report-month - گزارش ماهانه\n"
+        "/reset-day - ریست کردن داده‌های روزانه\n"
+        "/reset-week - ریست کردن داده‌های هفتگی\n"
+        "/reset-month - ریست کردن داده‌های ماهانه\n"
+        "/help - نمایش این راهنما"
     )
+    await update.message.reply_text(help_text)
 
-# دستور /reset_day
-async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    today = get_today()
-    if user_id in data and today in data[user_id]:
-        del data[user_id][today]
-        save_data(data)
-        await update.message.reply_text("✅ مصرف امروز پاک شد.")
-    else:
-        await update.message.reply_text("ℹ️ مصرفی برای امروز ثبت نشده بود.")
+# فرمان شروع
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report-day - گزارش روزانه\n/report-week - گزارش هفتگی\n/report-month - گزارش ماهانه\n/help - برای راهنما")
 
-# دستور /reset_week
-async def reset_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    week_start = get_week_start()
-    today = datetime.date.today()
-
-    if user_id in data:
-        for day in list(data[user_id].keys()):
-            date_obj = datetime.date.fromisoformat(day)
-            if datetime.date.fromisoformat(week_start) <= date_obj <= today:
-                del data[user_id][day]
-        save_data(data)
-        await update.message.reply_text("✅ مصرف این هفته پاک شد.")
-    else:
-        await update.message.reply_text("ℹ️ داده‌ای برای پاک کردن نبود.")
-
-# دستور /reset_month
-async def reset_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    first_of_month, _ = get_month_range()
-
-    if user_id in data:
-        for day in list(data[user_id].keys()):
-            if day < first_of_month:
-                del data[user_id][day]
-        save_data(data)
-        await update.message.reply_text("✅ مصرف این ماه پاک شد.")
-    else:
-        await update.message.reply_text("ℹ️ داده‌ای برای پاک کردن نبود.")
-
-# دستور /report_day
-async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    today = get_today()
-
-    total = Decimal("0")
-    if user_id in data and today in data[user_id]:
-        total = Decimal(str(sum(data[user_id][today])))
-
-    await update.message.reply_text(f"📊 گزارش مصرف امروز ({today}):\n🔢 مجموع مصرف: {total} عدد")
-
-# دستور /report_week
-async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    week_start = get_week_start()
-
-    total_week = Decimal("0")
-    message_lines = []
-    for day in list(data.get(user_id, {}).keys()):
-        date_obj = datetime.date.fromisoformat(day)
-        if datetime.date.fromisoformat(week_start) <= date_obj <= datetime.date.today():
-            nums = data[user_id].get(day, [])
-            total_day = sum(nums)
-            total_week += Decimal(str(total_day))
-            message_lines.append(f"{day}: {nums} → مجموع: {total_day}")
-
-    if message_lines:
-        message = "\n".join(message_lines) + f"\n\nمجموع مصرف هفته جاری: {total_week}"
-        await update.message.reply_text(f"📊 گزارش مصرف این هفته:\n{message}")
-    else:
-        await update.message.reply_text("ℹ️ هیچ مصرفی در این هفته ثبت نشده است.")
-
-# دستور /report_month
-async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    first_of_month, last_of_month = get_month_range()
-
-    total_month = Decimal("0")
-    message_lines = []
-    for day in list(data.get(user_id, {}).keys()):
-        if first_of_month <= day <= last_of_month:
-            nums = data[user_id].get(day, [])
-            total_day = sum(nums)
-            total_month += Decimal(str(total_day))
-            message_lines.append(f"{day}: {nums} → مجموع: {total_day}")
-
-    if message_lines:
-        message = "\n".join(message_lines) + f"\n\nمجموع مصرف ماه جاری: {total_month}"
-        await update.message.reply_text(f"📊 گزارش مصرف این ماه:\n{message}")
-    else:
-        await update.message.reply_text("ℹ️ هیچ مصرفی در این ماه ثبت نشده است.")
-
-# ذخیره عدد وارد شده
+# ذخیره عدد ارسال شده
 async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = get_today()
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
     text = update.message.text.strip()
 
     try:
@@ -182,6 +74,121 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_data(data)
     await update.message.reply_text(f"عدد {number} ذخیره شد.")
 
+# گزارش روزانه
+async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+    numbers = data.get(user_id, {}).get(today, [])
+
+    if numbers:
+        total = sum(numbers)
+        await update.message.reply_text(f"مقادیر امروز ({today}): {numbers}\nمجموع: {total}")
+    else:
+        await update.message.reply_text("هنوز عددی برای امروز ثبت نکردی.")
+
+# گزارش هفتگی
+async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    start_of_week = get_start_of_week()  # تاریخ شروع هفته
+    today = jdatetime.date.today()
+
+    # محاسبه تاریخ پایان هفته (جمعه)
+    week_end = today - jdatetime.timedelta(days=(today.weekday() + 1) % 7)  # جمعه آخر هفته
+
+    total_week = Decimal("0")
+    message_lines = []
+    
+    for day in list(data.get(user_id, {}).keys()):
+        date_obj = jdatetime.date.fromisoformat(day)
+        if jdatetime.date.fromisoformat(start_of_week) <= date_obj <= today:
+            nums = data[user_id].get(day, [])
+            total_day = sum(nums)
+            total_week += Decimal(str(total_day))
+            message_lines.append(f"{day}: {nums} → مجموع: {total_day}")
+
+    if message_lines:
+        message = "\n".join(message_lines) + f"\n\nمجموع مصرف هفته از {start_of_week} تا {week_end}: {total_week}"
+        await update.message.reply_text(f"📊 گزارش مصرف هفته از {start_of_week} تا {week_end}:\n{message}")
+    else:
+        await update.message.reply_text(f"ℹ️ هیچ مصرفی در هفته از {start_of_week} تا {week_end} ثبت نشده است.")
+
+    # ریست کردن هفته جدید
+    await update.message.reply_text(f"وارد هفته جدید شدیم! داده‌های هفته گذشته پاک شد.")
+
+# گزارش ماهانه
+async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    
+    # محاسبه تاریخ اول ماه جاری شمسی
+    today = jdatetime.date.today()
+    first_of_month = today.replace(day=1).isoformat()  # تاریخ اول ماه
+    last_of_month = (today.replace(day=1) + jdatetime.timedelta(days=32)).replace(day=1) - jdatetime.timedelta(days=1)  # آخرین روز ماه
+    
+    total_month = Decimal("0")
+    message_lines = []
+    
+    # محاسبه مصرف از اول ماه تا امروز
+    for day in list(data.get(user_id, {}).keys()):
+        if first_of_month <= day <= today.isoformat():
+            nums = data[user_id].get(day, [])
+            total_day = sum(nums)
+            total_month += Decimal(str(total_day))
+            message_lines.append(f"{day}: {nums} → مجموع: {total_day}")
+
+    # نمایش گزارش
+    if message_lines:
+        message = "\n".join(message_lines) + f"\n\nمجموع مصرف ماه جاری از {first_of_month} تا {today.isoformat()}: {total_month}"
+        await update.message.reply_text(f"📊 گزارش مصرف ماه از {first_of_month} تا {today.isoformat()}:\n{message}")
+    else:
+        await update.message.reply_text(f"ℹ️ هیچ مصرفی در ماه جاری ({first_of_month} تا {today.isoformat()}) ثبت نشده است.")
+
+# ریست روزانه
+async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+
+    if user_id in data and today in data[user_id]:
+        del data[user_id][today]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های امروز ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای امروز ثبت نشده است.")
+
+# ریست هفتگی
+async def reset_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    start_of_week = get_start_of_week()
+
+    if user_id in data:
+        keys_to_delete = [day for day in data[user_id] if jdatetime.date.fromisoformat(day) >= jdatetime.date.fromisoformat(start_of_week)]
+        for key in keys_to_delete:
+            del data[user_id][key]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های هفتگی ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای هفته جاری ثبت نشده است.")
+
+# ریست ماهانه
+async def reset_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    today = jdatetime.date.today()
+    first_of_month = today.replace(day=1).isoformat()  # تاریخ اول ماه
+
+    if user_id in data:
+        keys_to_delete = [day for day in data[user_id] if day >= first_of_month]
+        for key in keys_to_delete:
+            del data[user_id][key]
+        save_data(data)
+        await update.message.reply_text(f"✅ داده‌های ماهانه از {first_of_month} ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای ماه جاری ثبت نشده است.")
+
 # اجرای برنامه با Webhook
 if __name__ == "__main__":
     import dotenv
@@ -193,20 +200,20 @@ if __name__ == "__main__":
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # دستورات
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("reset_day", reset_day))
-    app.add_handler(CommandHandler("reset_week", reset_week))
-    app.add_handler(CommandHandler("reset_month", reset_month))
-    app.add_handler(CommandHandler("report_day", report_day))
-    app.add_handler(CommandHandler("report_week", report_week))
-    app.add_handler(CommandHandler("report_month", report_month))
+    app.add_handler(CommandHandler("help", help))  # اضافه کردن دستور /help
+    app.add_handler(CommandHandler("report-day", report_day))  # دستور گزارش روزانه
+    app.add_handler(CommandHandler("report-week", report_week))  # دستور گزارش هفتگی
+    app.add_handler(CommandHandler("report-month", report_month))  # دستور گزارش ماهانه
+    app.add_handler(CommandHandler("reset-day", reset_day))  # دستور ریست روزانه
+    app.add_handler(CommandHandler("reset-week", reset_week))  # دستور ریست هفتگی
+    app.add_handler(CommandHandler("reset-month", reset_month))  # دستور ریست ماهانه
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
+    print("ربات در حال اجراست...")
     app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
-        url_path=TOKEN,
-        webhook_url=f"https://tt-doze-counter.onrender.com/{TOKEN}",
+        listen="0.0.0.0",  # اجازه می‌دهد تا درخواست‌ها از همه IP‌ها بیاید
+        port=443,  # پورت 443 برای HTTPS
+        url_path=TOKEN,  # توکن ربات به‌عنوان مسیر
+        webhook_url=f"https://tt-doze-counter.onrender.com/{TOKEN}",  # URL اختصاصی Render شما
     )
