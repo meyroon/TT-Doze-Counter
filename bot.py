@@ -2,7 +2,7 @@ import os
 import json
 import datetime
 import jdatetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
@@ -26,97 +26,25 @@ def save_data(data):
 def get_today_date():
     return jdatetime.date.today().isoformat()
 
-# ساخت دکمه‌ها برای نمایش مجدد گزینه‌ها
-def get_keyboard():
-    return [
-        [InlineKeyboardButton("گزارش روزانه", callback_data="report_day")],
-        [InlineKeyboardButton("گزارش هفتگی", callback_data="report_week")],
-        [InlineKeyboardButton("گزارش ماهانه", callback_data="report_month")],
-        [InlineKeyboardButton("ریست روزانه", callback_data="reset_day")],
-    ]
+# دستور /help
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "دستورات ربات:\n\n"
+        "/start - شروع\n"
+        "/report - گزارش امروز\n"
+        "/weekly - گزارش هفتگی\n"
+        "/monthly - گزارش ماهانه\n"
+        "/reset_today - ریست کردن داده‌های امروز\n"
+        "/reset_weekly - ریست کردن داده‌های هفتگی\n"
+        "/help - نمایش این راهنما"
+    )
+    await update.message.reply_text(help_text)
 
-# ارسال مجدد دکمه‌ها بعد از هر پاسخ
-async def show_options(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = get_keyboard()
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("لطفاً یکی از گزینه‌ها را انتخاب کنید:", reply_markup=reply_markup)
-
-# دستور /start
+# فرمان شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! لطفاً یکی از گزینه‌ها را انتخاب کنید:")
-    await show_options(update, context)
+    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report - گزارش امروز\n/weekly - گزارش هفتگی\n/monthly - گزارش ماهانه\n/help - برای راهنما")
 
-# گزارش روزانه
-async def report_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    today = get_today_date()
-    data = load_data()
-    numbers = data.get(user_id, {}).get(today, [])
-    total = sum(numbers) if numbers else 0
-    await update.message.reply_text(f"گزارش امروز ({today}): {numbers}\nمجموع: {total}")
-    await show_options(update, context)
-
-# گزارش هفتگی
-async def report_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    today = get_today_date()
-    data = load_data()
-    message_lines = []
-    total_all = 0
-
-    # تاریخ شروع هفته و پایان هفته
-    start_of_week = get_start_of_week()
-
-    for i in range(7):
-        day = (start_of_week - jdatetime.timedelta(days=i)).isoformat()
-        nums = data.get(user_id, {}).get(day, [])
-        day_total = sum(nums)
-        total_all += day_total
-        if nums:
-            message_lines.append(f"{day}: {nums} → مجموع: {day_total}")
-
-    message = "\n".join(reversed(message_lines)) + f"\n\nمجموع کل هفته: {total_all}"
-    await update.message.reply_text(f"گزارش هفته از {start_of_week}:\n{message}")
-    await show_options(update, context)
-
-# گزارش ماهانه
-async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    data = load_data()
-    today = jdatetime.date.today()
-    start_of_month = today.replace(day=1).isoformat()
-
-    # محاسبه تعداد مصرف تا پایان ماه
-    message_lines = []
-    total_all = 0
-
-    for day in range(1, (today.day + 1)):
-        day_str = (today.replace(day=day)).isoformat()
-        nums = data.get(user_id, {}).get(day_str, [])
-        day_total = sum(nums)
-        total_all += day_total
-        if nums:
-            message_lines.append(f"{day_str}: {nums} → مجموع: {day_total}")
-
-    message = f"گزارش مصرف ماهانه از {start_of_month} تا {today}: \n" + "\n".join(message_lines) + f"\n\nمجموع کل ماه: {total_all}"
-    await update.message.reply_text(message)
-    await show_options(update, context)
-
-# ریست روزانه
-async def reset_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    today = get_today_date()
-    data = load_data()
-
-    if user_id in data and today in data[user_id]:
-        del data[user_id][today]
-        save_data(data)
-        await update.message.reply_text("✅ داده‌های امروز ریست شد.")
-    else:
-        await update.message.reply_text("هیچ داده‌ای برای امروز ثبت نشده است.")
-    await show_options(update, context)
-
-# مدیریت پیام‌ها
+# ذخیره عدد ارسال شده
 async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
     today = get_today_date()
@@ -137,24 +65,121 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[user_id][today].append(number)
     save_data(data)
     await update.message.reply_text(f"عدد {number} ذخیره شد.")
-    await show_options(update, context)
 
-# برای شروع هر هفته از روز شنبه
-def get_start_of_week():
+# گزارش امروز
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+    numbers = data.get(user_id, {}).get(today, [])
+
+    if numbers:
+        total = sum(numbers)
+        await update.message.reply_text(f"مقادیر امروز ({today}): {numbers}\nمجموع: {total}")
+    else:
+        await update.message.reply_text("هنوز عددی برای امروز ثبت نکردی.")
+
+# گزارش هفتگی
+async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    start_of_week = get_start_of_week()
+    end_of_last_week = jdatetime.date.fromisoformat(start_of_week) - jdatetime.timedelta(days=1)
+
+    message_lines = []
+    total_all = 0
+
+    for i in range(7):
+        day = (start_of_week - jdatetime.timedelta(days=i)).isoformat()
+        nums = data.get(user_id, {}).get(day, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day}: {nums} → مجموع: {day_total}")
+
+    if message_lines:
+        message = "\n".join(reversed(message_lines)) + f"\n\nمجموع کل هفته: {total_all}"
+        await update.message.reply_text(f"گزارش هفته گذشته از {end_of_last_week}: \n{message}")
+    else:
+        await update.message.reply_text("هیچ عددی در هفته گذشته ثبت نشده.")
+
+    # ریست کردن هفته جدید
+    await update.message.reply_text(f"وارد هفته جدید شدیم! داده‌های هفته گذشته پاک شد.")
+
+# گزارش ماهانه
+async def monthly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
     today = jdatetime.date.today()
-    return today - jdatetime.timedelta(days=today.weekday() + 1)
+    start_of_month = today.replace(day=1).isoformat()
+    end_of_month = (today.replace(day=1) + jdatetime.timedelta(days=32)).replace(day=1) - jdatetime.timedelta(days=1)
+    
+    message_lines = []
+    total_all = 0
 
-# اجرا
+    for day in range(1, (end_of_month - today).days + 1):
+        day_str = (today.replace(day=day)).isoformat()
+        nums = data.get(user_id, {}).get(day_str, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day_str}: {nums} → مجموع: {day_total}")
+
+    message = f"گزارش مصرف ماهانه ({start_of_month} - {end_of_month}):\n" + "\n".join(message_lines) + f"\n\nمجموع کل ماه: {total_all}"
+    await update.message.reply_text(message)
+
+# ریست روزانه
+async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+
+    if user_id in data and today in data[user_id]:
+        del data[user_id][today]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های امروز ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای امروز ثبت نشده است.")
+
+# ریست هفتگی
+async def reset_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    start_of_week = get_start_of_week()
+
+    if user_id in data:
+        keys_to_delete = [day for day in data[user_id] if jdatetime.date.fromisoformat(day) >= jdatetime.date.fromisoformat(start_of_week)]
+        for key in keys_to_delete:
+            del data[user_id][key]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های هفتگی ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای هفته جاری ثبت نشده است.")
+
+# اجرای برنامه با Webhook
 if __name__ == "__main__":
-    TOKEN = "7531144404:AAG047TB-zn1tCUMxZt8IPBSrZFfbDqsT0I"
+    import dotenv
+    dotenv.load_dotenv()  # اگر فایل .env داری
+
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        raise ValueError("توکن تلگرام یافت نشد. لطفاً متغیر BOT_TOKEN را تنظیم کن.")
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("report_day", report_day))
-    app.add_handler(CommandHandler("report_week", report_week))
-    app.add_handler(CommandHandler("report_month", report_month))
-    app.add_handler(CommandHandler("reset_day", reset_day))
+    app.add_handler(CommandHandler("help", help))  # اضافه کردن دستور /help
+    app.add_handler(CommandHandler("report", report))
+    app.add_handler(CommandHandler("weekly", weekly))
+    app.add_handler(CommandHandler("monthly", monthly))  # اضافه کردن دستور /monthly
+    app.add_handler(CommandHandler("reset_today", reset_today))  # اضافه کردن دستور /reset_today
+    app.add_handler(CommandHandler("reset_weekly", reset_weekly))  # اضافه کردن دستور /reset_weekly
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     print("ربات در حال اجراست...")
-    app.run_polling()
+    app.run_webhook(
+        listen="0.0.0.0",  # اجازه می‌دهد تا درخواست‌ها از همه IP‌ها بیاید
+        port=443,  # پورت 443 برای HTTPS
+        url_path=TOKEN,  # توکن ربات به‌عنوان مسیر
+        webhook_url=f"https://tt-doze-counter.onrender.com/{TOKEN}",  # URL اختصاصی Render شما
+    )
