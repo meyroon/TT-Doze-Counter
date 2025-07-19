@@ -32,18 +32,22 @@ def get_today_date():
         today = jdatetime.date.today() - jdatetime.timedelta(days=1)
     return today.isoformat()
 
+# گرفتن تاریخ شروع هفته (شنبه)
+def get_start_of_week():
+    today = jdatetime.date.today()
+    start_of_week = today - jdatetime.timedelta(days=today.weekday())  # گرفتن تاریخ شنبه این هفته
+    return start_of_week.isoformat()
+
 # شروع روز جدید و اعلام پایان روز قبلی
 def end_of_day_notification():
     today = get_today_date()
-    # ارسال پیام به کانال یا گروه (یا خود ربات)
-    print(f"پایان روز: {today}, مصرف امروز بررسی شده و وارد روز جدید شدیم.")
+    print(f"پایان روز: {today}, مصرف امروز بررسی شده و وارد روز جدید شد.")
 
 # پایان هفته و اعلام گزارش هفتگی
 def end_of_week_notification():
     today = get_today_date()
-    # پیدا کردن شروع هفته و پایان هفته گذشته
-    start_of_week = jdatetime.date.today() - jdatetime.timedelta(days=jdatetime.date.today().weekday())
-    end_of_last_week = start_of_week - jdatetime.timedelta(days=1)
+    start_of_week = get_start_of_week()
+    end_of_last_week = jdatetime.date.fromisoformat(start_of_week) - jdatetime.timedelta(days=1)
     print(f"پایان هفته: هفته گذشته از {end_of_last_week} تا {start_of_week} مصرف‌ها بررسی شد.")
 
 # دستور /help
