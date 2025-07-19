@@ -51,9 +51,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "دستورات ربات:\n\n"
         "/start - شروع\n"
-        "/report - گزارش روزانه\n"
-        "/weekly - گزارش هفتگی\n"
-        "/monthly - گزارش ماهانه\n"
+        "/report_day - گزارش روزانه\n"
+        "/report_week - گزارش هفتگی\n"
+        "/report_month - گزارش ماهانه\n"
         "/reset_today - ریست کردن داده‌های امروز\n"
         "/reset_weekly - ریست کردن داده‌های هفتگی\n"
         "/help - نمایش این راهنما"
@@ -62,7 +62,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # فرمان شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report - گزارش امروز\n/weekly - گزارش هفتگی\n/monthly - گزارش ماهانه\n/help - برای راهنما")
+    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report_day - گزارش روزانه\n/report_week - گزارش هفتگی\n/report_month - گزارش ماهانه\n/help - برای راهنما")
 
 # ذخیره عدد ارسال شده
 async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -189,11 +189,11 @@ if __name__ == "__main__":
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help))  # اضافه کردن دستور /help
-    app.add_handler(CommandHandler("report-day", report_day))  # دستور گزارش روزانه
-    app.add_handler(CommandHandler("report-week", report_week))  # دستور گزارش هفتگی
-    app.add_handler(CommandHandler("report-month", report_month))  # دستور گزارش ماهانه
-    app.add_handler(CommandHandler("reset-day", reset_day))  # دستور ریست روزانه
-    app.add_handler(CommandHandler("reset-week", reset_week))  # دستور ریست هفتگی
+    app.add_handler(CommandHandler("report_day", report_day))  # دستور گزارش روزانه
+    app.add_handler(CommandHandler("report_week", report_week))  # دستور گزارش هفتگی
+    app.add_handler(CommandHandler("report_month", report_month))  # دستور گزارش ماهانه
+    app.add_handler(CommandHandler("reset_day", reset_day))  # دستور ریست روزانه
+    app.add_handler(CommandHandler("reset_week", reset_week))  # دستور ریست هفتگی
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     print("ربات در حال اجراست...")
