@@ -160,6 +160,28 @@ async def report_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ هیچ مصرفی در این ماه ثبت نشده است.")
 
+# ذخیره عدد وارد شده
+async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = get_today()
+    text = update.message.text.strip()
+
+    try:
+        number = float(text)  # برای پذیرش اعداد اعشاری
+    except ValueError:
+        await update.message.reply_text("لطفاً فقط عدد وارد کنید.")
+        return
+
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {}
+    if today not in data[user_id]:
+        data[user_id][today] = []
+
+    data[user_id][today].append(number)
+    save_data(data)
+    await update.message.reply_text(f"عدد {number} ذخیره شد.")
+
 # اجرای برنامه با Webhook
 if __name__ == "__main__":
     import dotenv
