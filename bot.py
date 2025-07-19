@@ -1,4 +1,5 @@
-import os  # اضافه کردن این خط برای وارد کردن کتابخانه os
+import os
+import json
 import datetime
 from persiantools.jdatetime import JalaliDate
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -39,18 +40,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("لطفاً مقدار مصرف قرص را وارد کنید (مثلاً ۱ یا ۲):")
+    await query.edit_message_text("لطفاً مقدار مصرف قرص را وارد کنید (مثلاً 1.5 یا 2):")
     context.user_data["awaiting_value"] = True
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("awaiting_value"):
         try:
-            value = int(update.message.text)
+            value = float(update.message.text)  # تغییر از int به float برای پذیرش اعداد اعشاری
             user_id = str(update.effective_user.id)
             today = str(datetime.date.today())
             user_data = data.setdefault(user_id, [])
             user_data.append({"date": today, "value": value})
             save_data()
+            # ارسال گزارش بعد از ثبت عدد
             await update.message.reply_text(f"✅ {value} قرص ثبت شد.")
         except ValueError:
             await update.message.reply_text("لطفاً فقط یک عدد وارد کنید.")
