@@ -150,10 +150,10 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("report-day", report_day))
-    app.add_handler(CommandHandler("report-week", report_week))
-    app.add_handler(CommandHandler("report-month", report_month))
-    app.add_handler(CommandHandler("reset-day", reset_day))
+    app.add_handler(CommandHandler("report_day", report_day))
+    app.add_handler(CommandHandler("report_week", report_week))
+    app.add_handler(CommandHandler("report_month", report_month))
+    app.add_handler(CommandHandler("reset_day", reset_day))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     print("ربات در حال اجراست...")
