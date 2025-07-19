@@ -26,9 +26,30 @@ def save_data(data):
 def get_today_date():
     return jdatetime.date.today().isoformat()
 
+# گرفتن تاریخ اولین روز هفته (شنبه)
+def get_start_of_week():
+    today = jdatetime.date.today()
+    days_to_saturday = (today.weekday() + 1) % 7  # شنبه به‌عنوان اولین روز هفته
+    start_of_week = today - jdatetime.timedelta(days=days_to_saturday)
+    return start_of_week.isoformat()
+
+# دستور /help
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "دستورات ربات:\n\n"
+        "/start - شروع\n"
+        "/report - گزارش امروز\n"
+        "/weekly - گزارش هفتگی\n"
+        "/monthly - گزارش ماهانه\n"
+        "/reset_today - ریست کردن داده‌های امروز\n"
+        "/reset_weekly - ریست کردن داده‌های هفتگی\n"
+        "/help - نمایش این راهنما"
+    )
+    await update.message.reply_text(help_text)
+
 # فرمان شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report - گزارش امروز\n/weekly - گزارش هفتگی")
+    await update.message.reply_text("سلام! عدد خود را بفرست تا ثبت شود.\nدستورات:\n/report - گزارش امروز\n/weekly - گزارش هفتگی\n/monthly - گزارش ماهانه\n/help - برای راهنما")
 
 # ذخیره عدد ارسال شده
 async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,11 +57,12 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = get_today_date()
     text = update.message.text.strip()
 
-    if not text.isdigit():
+    try:
+        number = float(text)  # برای پذیرش اعداد اعشاری
+    except ValueError:
         await update.message.reply_text("لطفاً فقط عدد وارد کنید.")
         return
 
-    number = int(text)
     data = load_data()
     if user_id not in data:
         data[user_id] = {}
@@ -68,12 +90,14 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
     data = load_data()
-    today = jdatetime.date.today()
+    start_of_week = get_start_of_week()
+    end_of_last_week = jdatetime.date.fromisoformat(start_of_week) - jdatetime.timedelta(days=1)
+
     message_lines = []
     total_all = 0
 
     for i in range(7):
-        day = (today - jdatetime.timedelta(days=i)).isoformat()
+        day = (start_of_week - jdatetime.timedelta(days=i)).isoformat()
         nums = data.get(user_id, {}).get(day, [])
         day_total = sum(nums)
         total_all += day_total
@@ -82,10 +106,62 @@ async def weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if message_lines:
         message = "\n".join(reversed(message_lines)) + f"\n\nمجموع کل هفته: {total_all}"
+        await update.message.reply_text(f"گزارش هفته گذشته از {end_of_last_week}: \n{message}")
     else:
-        message = "هیچ عددی در هفت روز گذشته ثبت نشده."
+        await update.message.reply_text("هیچ عددی در هفته گذشته ثبت نشده.")
 
+    # ریست کردن هفته جدید
+    await update.message.reply_text(f"وارد هفته جدید شدیم! داده‌های هفته گذشته پاک شد.")
+
+# گزارش ماهانه
+async def monthly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    today = jdatetime.date.today()
+    start_of_month = today.replace(day=1).isoformat()
+    end_of_month = (today.replace(day=1) + jdatetime.timedelta(days=32)).replace(day=1) - jdatetime.timedelta(days=1)
+    
+    message_lines = []
+    total_all = 0
+
+    for day in range(1, (end_of_month - today).days + 1):
+        day_str = (today.replace(day=day)).isoformat()
+        nums = data.get(user_id, {}).get(day_str, [])
+        day_total = sum(nums)
+        total_all += day_total
+        if nums:
+            message_lines.append(f"{day_str}: {nums} → مجموع: {day_total}")
+
+    message = f"گزارش مصرف ماهانه ({start_of_month} - {end_of_month}):\n" + "\n".join(message_lines) + f"\n\nمجموع کل ماه: {total_all}"
     await update.message.reply_text(message)
+
+# ریست روزانه
+async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    today = get_today_date()
+    data = load_data()
+
+    if user_id in data and today in data[user_id]:
+        del data[user_id][today]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های امروز ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای امروز ثبت نشده است.")
+
+# ریست هفتگی
+async def reset_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)
+    data = load_data()
+    start_of_week = get_start_of_week()
+
+    if user_id in data:
+        keys_to_delete = [day for day in data[user_id] if jdatetime.date.fromisoformat(day) >= jdatetime.date.fromisoformat(start_of_week)]
+        for key in keys_to_delete:
+            del data[user_id][key]
+        save_data(data)
+        await update.message.reply_text("✅ داده‌های هفتگی ریست شد.")
+    else:
+        await update.message.reply_text("هیچ داده‌ای برای هفته جاری ثبت نشده است.")
 
 # اجرای برنامه
 if __name__ == "__main__":
@@ -99,8 +175,12 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help))  # اضافه کردن دستور /help
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("weekly", weekly))
+    app.add_handler(CommandHandler("monthly", monthly))  # اضافه کردن دستور /monthly
+    app.add_handler(CommandHandler("reset_today", reset_today))  # اضافه کردن دستور /reset_today
+    app.add_handler(CommandHandler("reset_weekly", reset_weekly))  # اضافه کردن دستور /reset_weekly
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
 
     print("ربات در حال اجراست...")
